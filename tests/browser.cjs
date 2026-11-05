@@ -200,6 +200,47 @@ const near = (a, b, e = 1e-7) => assert.ok(Math.abs(a / b - 1) < e, `${a} != ${b
         }
         console.log('PASS: A4 PNG 150/300 DPI dimensions and physical bar pixels, PNG/PDF with/without bar, export cleanup');
 
+        // Actual jsPDF downloads: exact sheet count, ISO page size and orientation.
+        await page.selectOption('#sizeMode', 'sheets');
+        assert.equal(await page.locator('#widthInput').isVisible(), false);
+        assert.equal(await page.locator('input[name="outputOptions"][value="png"]').isDisabled(), true);
+        assert.ok((await page.locator('#sheet-summary').textContent()).includes('540 × 539 mm'));
+        for (const setup of [
+            {format: 'a4', orientation: 'portrait', columns: 3, rows: 2, dpi: 96, width: 210, height: 297},
+            {format: 'a3', orientation: 'landscape', columns: 2, rows: 3, dpi: 75, width: 420, height: 297},
+            {format: 'a0', orientation: 'portrait', columns: 1, rows: 1, dpi: 75, width: 841, height: 1189}
+        ]) {
+            await page.selectOption('#paperFormat', setup.format);
+            await page.selectOption('#paperOrientation', setup.orientation);
+            await page.locator('#sheetColumns').fill(String(setup.columns));
+            await page.locator('#sheetRows').fill(String(setup.rows));
+            await page.locator('#dpiInput').fill(String(setup.dpi));
+            await page.locator('#dpiInput').dispatchEvent('change');
+            assert.equal(await page.locator('#generate-btn').isDisabled(), false);
+            near(await page.evaluate(() => scaleController.target), 25000);
+            const pending = page.waitForEvent('download', {timeout: 120000});
+            await page.locator('#generate-btn').click();
+            const download = await pending;
+            const filename = path.join(output, `poster-${setup.columns}x${setup.rows}-${setup.format}.pdf`);
+            await download.saveAs(filename);
+            await page.waitForFunction(() => !exporting);
+            const data = fs.readFileSync(filename).toString('latin1');
+            assert.equal((data.match(/\/Type\s*\/Page\b/g) || []).length, setup.columns * setup.rows);
+            const boxes = [...data.matchAll(/\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)\s*\]/g)];
+            assert.equal(boxes.length, setup.columns * setup.rows);
+            for (const box of boxes) {
+                near(Number(box[1]) / 72 * 25.4, setup.width, 0.00001);
+                near(Number(box[2]) / 72 * 25.4, setup.height, 0.00001);
+            }
+            assert.equal(await page.locator('.hidden-map').count(), 0);
+            assert.equal(await page.evaluate(() => devicePixelRatio), 1);
+        }
+        await page.selectOption('#sizeMode', 'size');
+        near(await page.evaluate(() => scaleController.target), 25000);
+        assert.equal(await page.locator('#widthInput').inputValue(), '297');
+        assert.equal(await page.locator('#heightInput').inputValue(), '210');
+        console.log('PASS: multi-page A4/A3, 1x1 A0, PDF page counts and ISO dimensions, fitted preview scale, mode restoration');
+
         // Very small paper and invalid input / unreachable scales.
         await page.evaluate(() => {
             form.widthInput.value = '10'; form.heightInput.value = '8';

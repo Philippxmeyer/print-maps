@@ -24,9 +24,11 @@
 mapboxgl.accessToken = 'pk.eyJ1IjoicGhpbGlwcHhtZXllciIsImEiOiJjbXczNjN0dDEwNjZqMzBzY21mOGJtYnViIn0.Wljtk31uTsLsSjhXWlBYzQ';
 
 var form = document.getElementById('config');
-var map, scaleController, previewBar;
+var map, scaleController, previewBar, previewGrid;
 var exporting = false;
 var scaleInputDirty = false;
+var posterLayout = null;
+var savedOutputFormat = 'png';
 var maxSize = 4096;
 var errors = {
     width: {state: false, grp: 'widthGroup'},
@@ -34,7 +36,8 @@ var errors = {
     dpi: {state: false, grp: 'dpiGroup'},
     scale: {state: false, grp: 'scaleGroup'},
     latitude: {state: false, grp: 'latGroup'},
-    longitude: {state: false, grp: 'lonGroup'}
+    longitude: {state: false, grp: 'lonGroup'},
+    sheets: {state: false, grp: 'sheetSettings'}
 };
 
 if (!mapboxgl.accessToken || mapboxgl.accessToken.length < 10) {
@@ -89,9 +92,14 @@ try {
     previewBar.className = 'print-scale-overlay';
     previewBar.setAttribute('aria-hidden', 'true');
     map.getContainer().appendChild(previewBar);
+    previewGrid = document.createElement('canvas');
+    previewGrid.className = 'print-grid-overlay';
+    previewGrid.setAttribute('aria-hidden', 'true');
+    map.getContainer().appendChild(previewGrid);
     var gl = map.getCanvas().getContext('webgl') || map.getCanvas().getContext('experimental-webgl');
     maxSize = Math.min(gl.getParameter(gl.MAX_RENDERBUFFER_SIZE), gl.getParameter(gl.MAX_TEXTURE_SIZE));
     map.on('resize', drawPreviewBar);
+    map.on('resize', drawPreviewGrid);
     if (map.loaded()) scaleController.initialize();
 } catch (e) {
     document.getElementById('config-fields').disabled = true;
@@ -129,18 +137,61 @@ function isError() {
 function unit() { return form.unitOptions[0].checked ? 'in' : 'mm'; }
 function inches(value) { return unit() === 'mm' ? value / 25.4 : value; }
 function toPixels(length) { return inches(length) * PrintScale.CSS_DPI + 'px'; }
+function sheetMode() { return form.sizeMode.value === 'sheets'; }
+
+function updateSizeMode() {
+    var tiled = sheetMode();
+    document.getElementById('sheetSettings').hidden = !tiled;
+    ['unitSettings', 'customWidth', 'customHeight'].forEach(function(id) {
+        document.getElementById(id).hidden = tiled;
+    });
+    form.widthInput.disabled = tiled;
+    form.heightInput.disabled = tiled;
+    form.unitOptions[0].disabled = tiled;
+    form.unitOptions[1].disabled = tiled;
+    ['paperFormat', 'paperOrientation', 'sheetColumns', 'sheetRows'].forEach(function(id) {
+        form[id].disabled = !tiled;
+    });
+    if (tiled) {
+        savedOutputFormat = form.outputOptions[0].checked ? 'png' : 'pdf';
+        form.outputOptions[1].checked = true;
+    } else {
+        form.outputOptions[0].checked = savedOutputFormat === 'png';
+        form.outputOptions[1].checked = savedOutputFormat === 'pdf';
+    }
+    form.outputOptions[0].disabled = tiled;
+    form.outputOptions[1].disabled = tiled;
+    document.getElementById('generate-btn').textContent = tiled ? 'Mehrseitiges PDF erstellen' : 'Generate Map';
+    validateDimensions();
+}
+form.sizeMode.addEventListener('change', updateSizeMode);
+['paperFormat', 'paperOrientation', 'sheetColumns', 'sheetRows'].forEach(function(id) {
+    form[id].addEventListener('change', validateDimensions);
+    form[id].addEventListener('input', validateDimensions);
+});
 
 function validateDimensions() {
     var dpi = Number(form.dpiInput.value);
     errors.dpi.state = !PrintScale.positive(dpi);
     errors.dpi.msg = 'DPI must be a finite positive number!';
+    errors.sheets.state = false;
+    if (sheetMode()) {
+        validateSheets(dpi);
+        handleErrors();
+        drawPreviewBar();
+        drawPreviewGrid();
+        return;
+    }
+    posterLayout = null;
+    if (scaleController) scaleController.viewportScale = 1;
     ['width', 'height'].forEach(function(name) {
         var value = inches(Number(form[name + 'Input'].value));
         var cssPixels = value * PrintScale.CSS_DPI;
         var pixels = value * dpi;
         var error = errors[name];
         error.state = !PrintScale.positive(value) || cssPixels < 1 || !Number.isFinite(pixels) ||
-            pixels < 1 || pixels > maxSize || cssPixels * window.devicePixelRatio > maxSize;
+            pixels < 1 || Math.ceil(cssPixels) * dpi / PrintScale.CSS_DPI > maxSize ||
+            cssPixels * window.devicePixelRatio > maxSize;
         error.msg = name + ': Bitte ein positives Papiermaß mit mindestens einem Vorschau-/Exportpixel ' +
             'und höchstens ' + maxSize + ' Pixeln pro Seite wählen.';
         if (!error.state && map) map.getContainer().style[name] = cssPixels + 'px';
@@ -154,6 +205,52 @@ function validateDimensions() {
     if (map && !errors.width.state && !errors.height.state) map.resize();
     handleErrors();
     drawPreviewBar();
+    drawPreviewGrid();
+}
+
+function validateSheets(dpi) {
+    errors.width.state = errors.height.state = false;
+    posterLayout = null;
+    try {
+        posterLayout = PrintTiles.layout(form.paperFormat.value, form.paperOrientation.value,
+            Number(form.sheetColumns.value), Number(form.sheetRows.value));
+    } catch (error) {
+        errors.sheets.state = true;
+        errors.sheets.msg = error.message;
+        document.getElementById('sheet-summary').textContent = '';
+        return;
+    }
+    var p = posterLayout;
+    document.getElementById('sheet-summary').textContent = p.columns + ' × ' + p.rows +
+        ' = ' + p.pages.length + ' PDF-Seiten, DIN ' + p.format.toUpperCase() + ' ' +
+        (p.orientation === 'portrait' ? 'Hochformat' : 'Querformat') +
+        '. Kartenfläche nach dem Zusammenkleben: ' + p.width + ' × ' + p.height + ' mm (ohne Außenrand).';
+    // Limit the raster of a single sheet, rather than the entire poster. Allow
+    // for rounding the render viewport up to whole CSS pixels for exact cropping.
+    var cssWidth = p.imageWidth * PrintScale.CSS_DPI / 25.4;
+    var cssHeight = p.imageHeight * PrintScale.CSS_DPI / 25.4;
+    var maxDpi = Math.floor(Math.min(
+        maxSize * PrintScale.CSS_DPI / Math.max(Math.ceil(cssWidth), Math.ceil(cssHeight)),
+        Math.sqrt(64000000 / (p.imageWidth * p.imageHeight)) * 25.4,
+        Math.sqrt(256000000 / (p.imageWidth * p.imageHeight * p.pages.length)) * 25.4));
+    if (PrintScale.positive(dpi) && (dpi > maxDpi || Math.min(p.imageWidth, p.imageHeight) * dpi / 25.4 < 1)) {
+        errors.dpi.state = true;
+        errors.dpi.msg = 'Bitte eine Auflösung von mindestens einem Pixel pro Blatt und höchstens ' +
+            maxDpi + ' DPI für dieses Raster wählen (Geräte- und Speichergrenzen).';
+    }
+    if (map && scaleController) {
+        var width = p.width * PrintScale.CSS_DPI / 25.4;
+        var height = p.height * PrintScale.CSS_DPI / 25.4;
+        var fit = Math.min(1, 960 / width, 700 / height,
+            maxSize / (Math.max(width, height) * window.devicePixelRatio));
+        // Integer viewport dimensions use one common physical scale in both axes.
+        var previewWidth = Math.max(1, Math.floor(width * fit));
+        scaleController.viewportScale = previewWidth / width;
+        map.getContainer().style.width = previewWidth + 'px';
+        map.getContainer().style.height = Math.max(1, Math.round(height * scaleController.viewportScale)) + 'px';
+        map.resize();
+        scaleController.update();
+    }
 }
 form.widthInput.addEventListener('change', validateDimensions);
 form.heightInput.addEventListener('change', validateDimensions);
@@ -231,7 +328,40 @@ function drawPreviewBar() {
     previewBar.width = Math.round(container.clientWidth * ratio);
     previewBar.height = Math.round(container.clientHeight * ratio);
     PrintScale.drawBar(previewBar.getContext('2d'), previewBar.width, previewBar.height,
-        PrintScale.scaleFromZoom(map.getCenter().lat, map.getZoom()), PrintScale.CSS_DPI * ratio);
+        PrintScale.scaleFromZoom(map.getCenter().lat, map.getZoom()) * scaleController.viewportScale,
+        PrintScale.CSS_DPI * ratio * scaleController.viewportScale);
+}
+
+function drawPreviewGrid() {
+    if (!previewGrid) return;
+    previewGrid.style.display = sheetMode() && posterLayout ? 'block' : 'none';
+    if (!sheetMode() || !posterLayout) return;
+    var p = posterLayout, ratio = window.devicePixelRatio;
+    previewGrid.width = Math.round(map.getContainer().clientWidth * ratio);
+    previewGrid.height = Math.round(map.getContainer().clientHeight * ratio);
+    var context = previewGrid.getContext('2d');
+    var xScale = previewGrid.width / p.width, yScale = previewGrid.height / p.height;
+    context.fillStyle = 'rgba(255, 196, 0, 0.24)';
+    p.pages.forEach(function(page) {
+        if (page.column > 0) context.fillRect(page.x * xScale, page.y * yScale,
+            p.overlap * xScale, p.imageHeight * yScale);
+        if (page.row > 0) context.fillRect(page.x * xScale, page.y * yScale,
+            p.imageWidth * xScale, p.overlap * yScale);
+    });
+    context.strokeStyle = '#23527c';
+    context.lineWidth = ratio;
+    context.setLineDash([5 * ratio, 3 * ratio]);
+    context.font = 12 * ratio + 'px sans-serif';
+    p.pages.forEach(function(page) {
+        context.strokeRect(page.x * xScale + ratio / 2, page.y * yScale + ratio / 2,
+            p.imageWidth * xScale - ratio, p.imageHeight * yScale - ratio);
+        var x = (page.x + p.imageWidth) * xScale - 54 * ratio;
+        var y = (page.y + p.imageHeight) * yScale - 22 * ratio;
+        context.fillStyle = 'rgba(255,255,255,0.9)';
+        context.fillRect(x, y, 50 * ratio, 18 * ratio);
+        context.fillStyle = '#23527c';
+        context.fillText(page.label, x + 3 * ratio, y + 13 * ratio);
+    });
 }
 
 var origBodyPaddingRight;
@@ -285,12 +415,23 @@ function generateMap() {
         scale: scaleController.target, bearing: map.getBearing(),
         minZoom: map.getMinZoom(), maxZoom: map.getMaxZoom()
     };
+    if (sheetMode()) {
+        settings.poster = posterLayout;
+        settings.format = 'pdf';
+    }
     exporting = true;
     form.querySelector('fieldset').disabled = true;
     map.getContainer().classList.add('exporting');
     document.getElementById('spinner').style.display = 'inline-block';
     handleErrors();
-    return createPrintMap(settings).catch(function(error) {
+    document.getElementById('export-status').textContent = 'Karte wird gerendert …';
+    return Promise.resolve().then(function() {
+        return settings.poster ? createTiledPrintMap(settings) : createPrintMap(settings);
+    }).then(function() {
+        document.getElementById('export-status').textContent = settings.poster ?
+            'PDF mit ' + settings.poster.pages.length + ' Seiten erstellt.' : 'Export erstellt.';
+    }).catch(function(error) {
+        document.getElementById('export-status').textContent = 'Export abgebrochen.';
         openErrorModal('Export fehlgeschlagen: ' + error.message);
     }).finally(function() {
         exporting = false;
@@ -299,14 +440,17 @@ function generateMap() {
         document.getElementById('spinner').style.display = 'none';
         handleErrors();
         drawPreviewBar();
+        drawPreviewGrid();
     });
 }
 
-function createPrintMap(settings) {
+// Render one physical rectangle, then release its WebGL context before the next
+// sheet. Crop a rounded-up viewport instead of stretching an integer CSS size.
+function renderPrintCanvas(settings) {
     return new Promise(function(resolve, reject) {
         var descriptor = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio');
-        var renderMap, hidden, timeout, finished = false;
-        function finish(error) {
+        var renderMap, hidden, timeout, output, finished = false;
+        function finish(error, result) {
             if (finished) return;
             finished = true;
             clearTimeout(timeout);
@@ -318,11 +462,16 @@ function createPrintMap(settings) {
                 if (descriptor) Object.defineProperty(window, 'devicePixelRatio', descriptor);
                 else delete window.devicePixelRatio;
             }
-            if (error) reject(error); else resolve();
+            if (error) {
+                if (output) output.width = output.height = 0;
+                reject(error);
+            } else resolve(result);
         }
         try {
             var widthIn = settings.unit === 'mm' ? settings.width / 25.4 : settings.width;
             var heightIn = settings.unit === 'mm' ? settings.height / 25.4 : settings.height;
+            var cssWidth = widthIn * PrintScale.CSS_DPI;
+            var cssHeight = heightIn * PrintScale.CSS_DPI;
             Object.defineProperty(window, 'devicePixelRatio', {
                 configurable: true, get: function() { return settings.dpi / PrintScale.CSS_DPI; }
             });
@@ -330,13 +479,11 @@ function createPrintMap(settings) {
             hidden.className = 'hidden-map';
             document.body.appendChild(hidden);
             var container = document.createElement('div');
-            container.style.width = widthIn * PrintScale.CSS_DPI + 'px';
-            container.style.height = heightIn * PrintScale.CSS_DPI + 'px';
+            container.style.width = Math.ceil(cssWidth) + 'px';
+            container.style.height = Math.ceil(cssHeight) + 'px';
             hidden.appendChild(container);
-            var zoom = PrintScale.zoomFromScale(settings.center.lat, settings.scale);
-            // Account for the integer CSS viewport used by Mapbox. The output
-            // bitmap itself is rounded to the requested paper size and DPI.
-            zoom += Math.log2(container.clientWidth / (widthIn * PrintScale.CSS_DPI));
+            var zoom = settings.zoom === undefined ?
+                PrintScale.zoomFromScale(settings.center.lat, settings.scale) : settings.zoom;
             if (zoom < settings.minZoom || zoom > settings.maxZoom) {
                 throw new Error('Maßstab liegt für dieses Papierformat an einer Zoomgrenze.');
             }
@@ -352,48 +499,103 @@ function createPrintMap(settings) {
             renderMap.once('idle', function() {
                 if (finished) return;
                 try {
-                    var output = document.createElement('canvas');
+                    var center = renderMap.getCenter();
+                    if (Math.abs(renderMap.getZoom() - zoom) > 1e-7 ||
+                            Math.abs(center.lat - settings.center.lat) > 1e-7 ||
+                            Math.abs(((center.lng - settings.center.lng + 540) % 360) - 180) > 1e-7) {
+                        throw new Error('Die Exportkamera kann das Kartenraster nicht unverändert darstellen. Bitte Ort oder Maßstab ändern.');
+                    }
+                    output = document.createElement('canvas');
                     output.width = Math.round(widthIn * settings.dpi);
                     output.height = Math.round(heightIn * settings.dpi);
                     var context = output.getContext('2d');
                     if (!context) throw new Error('2D-Canvas konnte nicht erstellt werden.');
-                    context.drawImage(renderMap.getCanvas(), 0, 0, output.width, output.height);
-                    var center = renderMap.getCenter();
-                    var actualScale = PrintScale.scaleFromZoom(center.lat, renderMap.getZoom()) *
-                        container.clientWidth / (widthIn * PrintScale.CSS_DPI);
-                    if (Math.abs(actualScale / settings.scale - 1) > 1e-6) {
-                        throw new Error('Die Exportkamera kann den angeforderten Maßstab nicht darstellen.');
-                    }
+                    var source = renderMap.getCanvas();
+                    var cropWidth = cssWidth * source.width / container.clientWidth;
+                    var cropHeight = cssHeight * source.height / container.clientHeight;
+                    context.drawImage(source, (source.width - cropWidth) / 2, (source.height - cropHeight) / 2,
+                        cropWidth, cropHeight, 0, 0, output.width, output.height);
+                    var actualScale = PrintScale.scaleFromZoom(center.lat, renderMap.getZoom());
                     if (settings.bar) PrintScale.drawBar(context, output.width, output.height,
-                        actualScale, settings.dpi);
-                    if (settings.format === 'png') {
-                        output.toBlob(function(blob) {
-                            if (finished) return;
-                            try {
-                                if (!blob) throw new Error('PNG konnte nicht erstellt werden.');
-                                saveAs(blob, 'map.png');
-                                finish();
-                            } catch (error) { finish(error); }
-                        }, 'image/png');
-                    } else {
-                        var pdf = new jsPDF({orientation: settings.width > settings.height ? 'l' : 'p',
-                            unit: settings.unit, format: [settings.width, settings.height], compress: true});
-                        pdf.addImage(output.toDataURL('image/png'), 'png', 0, 0,
-                            settings.width, settings.height, null, 'FAST');
-                        pdf.setProperties({
-                            title: renderMap.getStyle().name || 'Print Maps',
-                            subject: 'center: [' + center.lng + ', ' + center.lat + ', ' + renderMap.getZoom() +
-                                '], local scale 1:' + actualScale,
-                            creator: 'Print Maps',
-                            author: '(c) ' + (settings.style.indexOf('mapbox') >= 0 ? 'Mapbox' : 'Stadia Maps') +
-                                ', (c) OpenStreetMap'
-                        });
-                        pdf.save('map.pdf');
-                        finish();
-                    }
+                        settings.barScale || actualScale, settings.dpi);
+                    finish(null, {canvas: output, scale: actualScale, center: center,
+                        zoom: renderMap.getZoom(), name: renderMap.getStyle().name || 'Print Maps'});
                 } catch (error) { finish(error); }
             });
         } catch (error) { finish(error); }
     });
 }
-handleErrors();
+
+function setPdfProperties(pdf, settings, name) {
+    pdf.setProperties({
+        title: name,
+        subject: 'center: [' + settings.center.lng + ', ' + settings.center.lat +
+            '], local scale at poster center 1:' + settings.scale +
+            (settings.poster ? ', ' + settings.poster.columns + 'x' + settings.poster.rows +
+                ' sheets, overlap 15 mm' : ''),
+        creator: 'Print Maps',
+        author: '(c) ' + (settings.style.indexOf('mapbox') >= 0 ? 'Mapbox' : 'Stadia Maps') +
+            ', (c) OpenStreetMap'
+    });
+}
+
+function createPrintMap(settings) {
+    return renderPrintCanvas(settings).then(function(result) {
+        var output = result.canvas;
+        return Promise.resolve().then(function() {
+            if (settings.format === 'png') {
+                return new Promise(function(resolve, reject) {
+                    output.toBlob(function(blob) {
+                        try {
+                            if (!blob) throw new Error('PNG konnte nicht erstellt werden.');
+                            saveAs(blob, 'map.png');
+                            resolve();
+                        } catch (error) { reject(error); }
+                    }, 'image/png');
+                });
+            }
+            var pdf = new jsPDF({orientation: settings.width > settings.height ? 'l' : 'p',
+                unit: settings.unit, format: [settings.width, settings.height], compress: true});
+            pdf.addImage(output.toDataURL('image/png'), 'png', 0, 0,
+                settings.width, settings.height, null, 'FAST');
+            setPdfProperties(pdf, settings, result.name);
+            pdf.save('map.pdf');
+        }).finally(function() { output.width = output.height = 0; });
+    });
+}
+
+function createTiledPrintMap(settings) {
+    var p = settings.poster;
+    var zoom = PrintScale.zoomFromScale(settings.center.lat, settings.scale);
+    var pdf = new jsPDF({orientation: p.orientation === 'landscape' ? 'l' : 'p',
+        unit: 'mm', format: [p.pageWidth, p.pageHeight], compress: true});
+    var attribution = settings.style.indexOf('mapbox') >= 0 ?
+        '(c) Mapbox | (c) OpenStreetMap' : '(c) Stadia Maps | (c) OpenMapTiles | (c) OpenStreetMap';
+    // Sequential rendering bounds live canvas memory and uses the same world
+    // zoom/bearing for every page, including the duplicated overlap strips.
+    var chain = Promise.resolve();
+    p.pages.forEach(function(page) {
+        chain = chain.then(function() {
+            document.getElementById('export-status').textContent = 'Blatt ' + page.number +
+                ' von ' + p.pages.length + ' wird gerendert (' + page.label + ') …';
+            return renderPrintCanvas({width: p.imageWidth, height: p.imageHeight,
+                unit: 'mm', dpi: settings.dpi, style: settings.style, bar: settings.bar && page.number === 1,
+                barScale: settings.scale,
+                center: PrintTiles.pageCenter(p, page, settings.center, zoom, settings.bearing),
+                zoom: zoom, scale: settings.scale, bearing: settings.bearing,
+                minZoom: settings.minZoom, maxZoom: settings.maxZoom});
+        }).then(function(result) {
+            try {
+                if (page.number > 1) pdf.addPage([p.pageWidth, p.pageHeight], p.orientation === 'landscape' ? 'l' : 'p');
+                pdf.addImage(result.canvas.toDataURL('image/png'), 'png', p.margin, p.margin,
+                    p.imageWidth, p.imageHeight, 'sheet-' + page.number, 'FAST');
+                PrintTiles.drawMarks(pdf, p, page, attribution);
+                setPdfProperties(pdf, settings, result.name);
+            } finally { result.canvas.width = result.canvas.height = 0; }
+        });
+    });
+    return chain.then(function() {
+        pdf.save('map-' + p.columns + 'x' + p.rows + '-' + p.format + '.pdf');
+    });
+}
+updateSizeMode();

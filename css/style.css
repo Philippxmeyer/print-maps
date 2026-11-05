@@ -18,7 +18,7 @@ body {
     margin-right: auto;
 }
 
-.print-scale-overlay {
+.print-scale-overlay, .print-grid-overlay {
     position: absolute;
     top: 0;
     left: 0;
@@ -26,6 +26,30 @@ body {
     height: 100%;
     pointer-events: none;
     z-index: 1;
+}
+
+.print-scale-overlay {
+    z-index: 2;
+}
+
+#sheetSettings {
+    padding: 15px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #f8fafb;
+}
+
+#sheet-summary {
+    font-weight: bold;
+}
+
+#sheetSettings.has-error {
+    border-color: #a94442;
+}
+
+#export-status {
+    margin-top: 10px;
 }
 
 #map.exporting {

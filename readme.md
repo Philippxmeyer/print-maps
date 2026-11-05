@@ -19,6 +19,7 @@ continue as long as fixes can be made without updating Mapbox GL JS.
 * PNG or PDF output (PDF page size matches the entered width and height)
 * Choice of map styles
 * Height and width settings
+* Multi-page DIN A0–A4 PDF posters, with a sheet grid, orientation, 15 mm overlap and assembly marks
 * DPI setting
 * Local print scale, presets and an optional scale bar
 
@@ -74,6 +75,49 @@ verwenden dieses gemeinsame Bild. Kartenressourcenfehler oder eine Wartezeit üb
 auf. Sehr große Exporte sind durch WebGL-Limits und 64 Megapixel begrenzt; auf
 einem Raspberry Pi können die verfügbaren Speicherreserven zusätzlich begrenzen.
 
+## Mehrseitiger Posterdruck
+
+Unter **Ausgabegröße festlegen → Blattraster (mehrseitiges PDF)** die Anzahl der
+**Spalten** (nebeneinander) und **Zeilen** (untereinander), das Druckformat
+**DIN A0, A1, A2, A3 oder A4** sowie **Hochformat / Querformat** wählen.
+Zum Beispiel ergeben **3 Spalten × 2 Zeilen, DIN A4 Hochformat** ein PDF mit
+genau sechs Seiten. Die bisherige Eingabe von Breite und Höhe bleibt als
+separater Modus erhalten; im Rastermodus ist PDF fest eingestellt.
+
+Jedes Blatt hat **10 mm weißen Rand**, damit Schnittmarken, Passkreuze,
+Blattnummer und Nachbarn auf üblichen Druckern Platz finden. Innerhalb dieser
+Ränder wiederholen sich **15 mm Kartenfläche** auf jedem benachbarten Blatt.
+Die zusammengefügte Kartenfläche beträgt deshalb
+`Spalten × (Blattbreite − 20 mm) − (Spalten − 1) × 15 mm` und entsprechend für
+die Höhe. Beim Beispiel sind das **540 × 539 mm** ohne Außenrand. Die Vorschau
+zeigt die gesamte Karte mit Blattgrenzen und gelben Überlappungsstreifen; die
+Zusammenfassung nennt Seitenzahl und fertige Kartenfläche.
+
+Die PDF-Seiten sind zeilenweise von links nach rechts geordnet und mit
+**Z1-S1, Z1-S2, …** beschriftet. **Einseitig mit 100 % / tatsächlicher Größe**
+drucken, ohne Anpassung an das Papier. An inneren Verbindungen den linken bzw.
+oberen weißen Rand des nächsten Blatts an den Schnittmarken abschneiden, den
+15-mm-Kartenstreifen auf den entsprechenden Streifen des Nachbarblatts legen
+und gleiche Passkreuze deckungsgleich ausrichten. Zuerst die Zeilen, dann die
+Zeilen untereinander zusammenkleben. Außenränder am Schluss abschneiden. Die
+PDF-Ränder enthalten ebenfalls die Montageanleitung und Nachbarbezeichnungen.
+
+Alle Blätter verwenden dieselbe Mercator-Projektion, denselben Zoom und dieselbe
+Drehung. Der Maßstab bezieht sich weiterhin auf den **Mittelpunkt der gesamten
+Karte**; er wird nicht an jedem Blatt neu gesetzt, damit die Übergänge passen.
+Die verkleinerte Rastervorschau berücksichtigt ihre Darstellungsgröße bei der
+Maßstabssteuerung. Die optionale Maßstabsleiste erscheint einmal oben links auf
+dem Poster; Quellenangaben stehen auf jedem Blatt und einmal im fertigen Bild.
+
+Die Blätter werden nacheinander gerendert und die jeweiligen WebGL-Kontexte
+anschließend freigegeben. Blattanzahl und Postergröße erfordern deshalb keinen
+riesigen Gesamt-Canvas. Zulässig sind jeweils 1–10 Spalten und Zeilen, begrenzt
+durch Geräteauflösung, 64 Megapixel pro Blatt und 256 Megapixel pro PDF.
+Bei zu hoher DPI erscheint die für das Raster zulässige Auflösung. Große
+DIN-Formate können deshalb eine niedrigere DPI erfordern; beispielsweise ist
+A0 mit 150 DPI auf entsprechend leistungsfähigen Geräten möglich. Das Raster
+verändert weder den gewählten Maßstab noch die eingegebenen Einzelmaße.
+
 ### Entwicklung und Tests
 
 Weiterhin reines HTML/CSS/JavaScript: keine Build-Werkzeuge oder neuen
@@ -85,7 +129,14 @@ Rechen- und Zustandstests mit Node (nur zur Entwicklung erforderlich):
 
 ```
 node --test tests/print-scale.test.js
+node --test tests/print-tiles.test.js
+node --test tests/print-export.test.js
 ```
+
+`print-tiles` prüft DIN-Maße, Überlappungsgeometrie, Drehung, Datumsgrenze und
+Passmarken. `print-export` prüft mit DOM-/Mapbox-/jsPDF-Testdoubles den gesamten
+Exportablauf, die Seitenreihenfolge, Geräte-/Speichergrenzen und die Bereinigung
+nach Fehlern. Diese Tests ersetzen keinen echten WebGL-/PDF-Browsertest.
 
 Optionaler Browser-/Exporttest mit installiertem Playwright und Chromium:
 Webserver im Projektverzeichnis starten, dann in einer zweiten Shell ausführen:

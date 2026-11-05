@@ -26,8 +26,55 @@
 
 <form onsubmit="generateMap(); return false;" id="config">
   <fieldset id="config-fields">
+  <div class="form-group">
+    <label for="sizeMode">Ausgabegröße festlegen</label>
+    <select id="sizeMode" class="form-control">
+      <option value="size">Breite und Höhe eingeben</option>
+      <option value="sheets">Blattraster (mehrseitiges PDF)</option>
+    </select>
+  </div>
+  <div id="sheetSettings" hidden>
+    <div class="row">
+      <div class="col-sm-3">
+        <div class="form-group">
+          <label for="paperFormat">Druckformat pro Blatt</label>
+          <select id="paperFormat" class="form-control">
+            <option value="a0">DIN A0 (841 × 1189 mm)</option>
+            <option value="a1">DIN A1 (594 × 841 mm)</option>
+            <option value="a2">DIN A2 (420 × 594 mm)</option>
+            <option value="a3">DIN A3 (297 × 420 mm)</option>
+            <option value="a4" selected>DIN A4 (210 × 297 mm)</option>
+          </select>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="form-group">
+          <label for="paperOrientation">Ausrichtung pro Blatt</label>
+          <select id="paperOrientation" class="form-control">
+            <option value="portrait">Hochformat</option>
+            <option value="landscape">Querformat</option>
+          </select>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="form-group">
+          <label for="sheetColumns">Spalten (nebeneinander)</label>
+          <input type="number" id="sheetColumns" class="form-control" min="1" max="10" step="1" value="3" aria-describedby="sheet-summary">
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="form-group">
+          <label for="sheetRows">Zeilen (untereinander)</label>
+          <input type="number" id="sheetRows" class="form-control" min="1" max="10" step="1" value="2" aria-describedby="sheet-summary">
+        </div>
+      </div>
+    </div>
+    <p id="sheet-summary" role="status" aria-live="polite"></p>
+    <p class="help-block">15 mm gemeinsame Kartenfläche zwischen benachbarten Blättern; zusätzlich 10 mm weißer Rand für Schnitt- und Passmarken. Die Vorschau zeigt das gesamte Kartenraster; gelbe Streifen markieren die Überlappungen.</p>
+    <p class="help-block">Zusammensetzen: von links nach rechts, dann von oben nach unten. An inneren Verbindungen den linken bzw. oberen weißen Rand an den Schnittmarken abschneiden. Die 15-mm-Kartenstreifen überlappend auflegen und gleiche Passkreuze deckungsgleich ausrichten. Außenränder am Schluss abschneiden. PDF mit <strong>100 % / tatsächlicher Größe</strong> einseitig drucken.</p>
+  </div>
   <div class="row">
-    <div class="col-sm-4">
+    <div class="col-sm-4" id="unitSettings">
       <div class="form-group">
         <label>Unit</label><br>
         <label class="radio-inline">
@@ -67,13 +114,13 @@
     </div>
   </div>
   <div class="row">
-    <div class="col-sm-2">
+    <div class="col-sm-2" id="customWidth">
       <div class="form-group" id="widthGroup">
         <label for="widthInput">Width</label>
         <input type="text" class="form-control" id="widthInput" autocomplete="off" value="8">
       </div>
     </div>
-    <div class="col-sm-2">
+    <div class="col-sm-2" id="customHeight">
       <div class="form-group" id="heightGroup">
         <label for="heightInput">Height</label>
         <input type="text" class="form-control" id="heightInput" autocomplete="off" value="6">
@@ -177,6 +224,7 @@
   <div class="col-sm-12">
     <button type="submit" class="btn btn-primary btn-lg" id="generate-btn">Generate Map</button>
     <div id="spinner"></div>
+    <p id="export-status" role="status" aria-live="polite"></p>
   </div>
 </div>
 
@@ -215,6 +263,7 @@
 <script type="text/javascript" src="//cdn.jsdelivr.net/npm/filesaver.js@1.3.4/FileSaver.min.js"></script>
 <script type="text/javascript" src="//cdn.jsdelivr.net/npm/jspdf@1.4.1/dist/jspdf.min.js"></script>
 <script type="text/javascript" src="js/print-scale.js"></script>
+<script type="text/javascript" src="js/print-tiles.js"></script>
 <script type="text/javascript" src="js/script.js"></script>
 
 </body>

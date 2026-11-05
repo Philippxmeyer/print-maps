@@ -100,6 +100,8 @@
         this.target = null;
         this.correcting = false;
         this.valid = false;
+        // A reduced poster preview still represents the same physical print scale.
+        this.viewportScale = 1;
         var self = this;
         map.on('move', function(event) { self.update(event); });
         map.on('moveend', function(event) { self.update(event); });
@@ -107,7 +109,7 @@
     }
     Controller.prototype.initialize = function() {
         if (this.target !== null) return;
-        this.target = scaleFromZoom(this.map.getCenter().lat, this.map.getZoom());
+        this.target = scaleFromZoom(this.map.getCenter().lat, this.map.getZoom()) * this.viewportScale;
         this.update(null, 'initialize');
     };
     Controller.prototype.setTarget = function(scale) {
@@ -127,7 +129,7 @@
         if (userZoom) {
             // Includes pinch+pan, wheel around a point, navigation buttons and
             // their inertia. A programmatic flyTo has no originalEvent.
-            this.target = scaleFromZoom(map.getCenter().lat, map.getZoom());
+            this.target = scaleFromZoom(map.getCenter().lat, map.getZoom()) * this.viewportScale;
             reason = 'userZoom';
         }
         this.correcting = true;
@@ -147,14 +149,14 @@
                 anchor = map.project(location);
             }
             for (var i = 0; i < 12; i++) {
-                var zoom = zoomFromScale(map.getCenter().lat, this.target);
+                var zoom = zoomFromScale(map.getCenter().lat, this.target) + Math.log2(this.viewportScale);
                 var limited = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), zoom));
                 if (Math.abs(map.getZoom() - limited) < 1e-10 && map.getPitch() === 0) break;
                 transform.pitch = 0;
                 transform.zoom = limited;
                 if (anchor) transform.setLocationAtPoint(location, anchor);
             }
-            var actual = scaleFromZoom(map.getCenter().lat, map.getZoom());
+            var actual = scaleFromZoom(map.getCenter().lat, map.getZoom()) * this.viewportScale;
             this.valid = positive(actual) && Math.abs(actual / this.target - 1) < 1e-7;
             this.actual = actual;
             // Re-evaluate zoom-dependent paint and tile coverage as well as

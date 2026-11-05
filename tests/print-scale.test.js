@@ -138,3 +138,22 @@ test('bar lengths use 1/2/5 steps and fit even very small paper', () => {
         }
     }
 });
+
+test('fitted poster preview preserves print scale while resizing, panning and zooming', () => {
+    const {map, controller} = ready();
+    for (const factor of [0.4, 0.1, 0.75, 1]) {
+        controller.viewportScale = factor;
+        controller.update();
+        near(controller.target, 25000);
+        near(Scale.scaleFromZoom(map.lat, map.getZoom()) * factor, 25000);
+        map.lat = 60;
+        map.fire('move', {originalEvent: {type: 'pan'}});
+        near(controller.target, 25000);
+        near(controller.actual, 25000);
+    }
+    controller.viewportScale = 0.4;
+    map.userZoom = true;
+    map.transform.zoom = 14;
+    map.fire('move', {originalEvent: {type: 'wheel'}});
+    near(controller.target, Scale.scaleFromZoom(map.lat, 14) * 0.4);
+});
