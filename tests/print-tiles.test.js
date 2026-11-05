@@ -38,6 +38,29 @@ test('all five DIN sizes support both orientations, including a single sheet', (
     }
 });
 
+test('0 to 30 mm overlap changes poster extent and keeps neighbouring map coordinates aligned', () => {
+    const center = {lng: 6.95, lat: 50.85};
+    const zoom = Scale.zoomFromScale(center.lat, 25000);
+    for (const [overlap, width, height] of [[0, 570, 554], [0.5, 569, 553.5], [15, 540, 539], [30, 510, 524]]) {
+        const p = Tiles.layout('a4', 'portrait', 3, 2, overlap);
+        assert.deepEqual([p.width, p.height, p.overlap], [width, height, overlap]);
+        for (const bearing of [0, 90, -37]) {
+            const a = Tiles.pageCenter(p, p.pages[0], center, zoom, bearing);
+            const b = Tiles.pageCenter(p, p.pages[1], center, zoom, bearing);
+            const c = Tiles.pageCenter(p, p.pages[3], center, zoom, bearing);
+            const left = Tiles.offsetCenter(a, zoom, bearing, (190 - overlap) / 2, 0);
+            const right = Tiles.offsetCenter(b, zoom, bearing, -(190 - overlap) / 2, 0);
+            const top = Tiles.offsetCenter(a, zoom, bearing, 0, (277 - overlap) / 2);
+            const bottom = Tiles.offsetCenter(c, zoom, bearing, 0, -(277 - overlap) / 2);
+            near(left.lng, right.lng); near(left.lat, right.lat);
+            near(top.lng, bottom.lng); near(top.lat, bottom.lat);
+        }
+    }
+    for (const overlap of [-0.1, 30.1, NaN, Infinity, -Infinity, null, '', '15']) {
+        assert.throws(() => Tiles.layout('a4', 'portrait', 3, 2, overlap), /0 bis 30 mm/);
+    }
+});
+
 test('invalid sizes, orientations and fractional, empty or unbounded counts are rejected', () => {
     for (const value of [0, -1, 1.5, NaN, Infinity, 11, '3']) {
         assert.throws(() => Tiles.layout('a4', 'portrait', value, 2));

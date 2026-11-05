@@ -19,7 +19,7 @@ continue as long as fixes can be made without updating Mapbox GL JS.
 * PNG or PDF output (PDF page size matches the entered width and height)
 * Choice of map styles
 * Height and width settings
-* Multi-page DIN A0–A4 PDF posters, with a sheet grid, orientation, 15 mm overlap and assembly marks
+* Multi-page DIN A0–A4 PDF posters, with a sheet grid, orientation, adjustable 0–30 mm overlap and assembly marks
 * DPI setting
 * Local print scale, presets and an optional scale bar
 
@@ -80,16 +80,19 @@ einem Raspberry Pi können die verfügbaren Speicherreserven zusätzlich begrenz
 Unter **Ausgabegröße festlegen → Blattraster (mehrseitiges PDF)** die Anzahl der
 **Spalten** (nebeneinander) und **Zeilen** (untereinander), das Druckformat
 **DIN A0, A1, A2, A3 oder A4** sowie **Hochformat / Querformat** wählen.
+Die **Überlappung (mm)** lässt sich von **0 bis 30 mm** einstellen, auch mit
+Nachkommastellen. Standard sind weiterhin **15 mm**. Vorschau, Kartenfläche,
+Passmarken und PDF-Montagehinweise berücksichtigen den gewählten Wert.
 Zum Beispiel ergeben **3 Spalten × 2 Zeilen, DIN A4 Hochformat** ein PDF mit
 genau sechs Seiten. Die bisherige Eingabe von Breite und Höhe bleibt als
 separater Modus erhalten; im Rastermodus ist PDF fest eingestellt.
 
 Jedes Blatt hat **10 mm weißen Rand**, damit Schnittmarken, Passkreuze,
 Blattnummer und Nachbarn auf üblichen Druckern Platz finden. Innerhalb dieser
-Ränder wiederholen sich **15 mm Kartenfläche** auf jedem benachbarten Blatt.
+Ränder wiederholt sich die gewählte Überlappung auf jedem benachbarten Blatt.
 Die zusammengefügte Kartenfläche beträgt deshalb
-`Spalten × (Blattbreite − 20 mm) − (Spalten − 1) × 15 mm` und entsprechend für
-die Höhe. Beim Beispiel sind das **540 × 539 mm** ohne Außenrand. Die Vorschau
+`Spalten × (Blattbreite − 20 mm) − (Spalten − 1) × Überlappung` und entsprechend für
+die Höhe. Beim Beispiel mit 15 mm sind das **540 × 539 mm** ohne Außenrand. Die Vorschau
 zeigt die gesamte Karte mit Blattgrenzen und gelben Überlappungsstreifen; die
 Zusammenfassung nennt Seitenzahl und fertige Kartenfläche.
 
@@ -97,10 +100,12 @@ Die PDF-Seiten sind zeilenweise von links nach rechts geordnet und mit
 **Z1-S1, Z1-S2, …** beschriftet. **Einseitig mit 100 % / tatsächlicher Größe**
 drucken, ohne Anpassung an das Papier. An inneren Verbindungen den linken bzw.
 oberen weißen Rand des nächsten Blatts an den Schnittmarken abschneiden, den
-15-mm-Kartenstreifen auf den entsprechenden Streifen des Nachbarblatts legen
+Kartenstreifen in der gewählten Überlappungsbreite auf den entsprechenden Streifen des Nachbarblatts legen
 und gleiche Passkreuze deckungsgleich ausrichten. Zuerst die Zeilen, dann die
 Zeilen untereinander zusammenkleben. Außenränder am Schluss abschneiden. Die
 PDF-Ränder enthalten ebenfalls die Montageanleitung und Nachbarbezeichnungen.
+Bei **0 mm** die Kartenkanten bündig aneinanderlegen und die verbleibenden
+weißen Ränder als Klebelaschen unterlegen; es gibt keine doppelte Kartenfläche.
 
 Alle Blätter verwenden dieselbe Mercator-Projektion, denselben Zoom und dieselbe
 Drehung. Der Maßstab bezieht sich weiterhin auf den **Mittelpunkt der gesamten

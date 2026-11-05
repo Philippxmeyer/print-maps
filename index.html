@@ -69,9 +69,17 @@
         </div>
       </div>
     </div>
+    <div class="row">
+      <div class="col-sm-3">
+        <div class="form-group">
+          <label for="sheetOverlap">Überlappung (mm)</label>
+          <input type="number" id="sheetOverlap" class="form-control" min="0" max="30" step="any" value="15" aria-describedby="sheet-overlap-help sheet-summary">
+        </div>
+      </div>
+    </div>
     <p id="sheet-summary" role="status" aria-live="polite"></p>
-    <p class="help-block">15 mm gemeinsame Kartenfläche zwischen benachbarten Blättern; zusätzlich 10 mm weißer Rand für Schnitt- und Passmarken. Die Vorschau zeigt das gesamte Kartenraster; gelbe Streifen markieren die Überlappungen.</p>
-    <p class="help-block">Zusammensetzen: von links nach rechts, dann von oben nach unten. An inneren Verbindungen den linken bzw. oberen weißen Rand an den Schnittmarken abschneiden. Die 15-mm-Kartenstreifen überlappend auflegen und gleiche Passkreuze deckungsgleich ausrichten. Außenränder am Schluss abschneiden. PDF mit <strong>100 % / tatsächlicher Größe</strong> einseitig drucken.</p>
+    <p class="help-block" id="sheet-overlap-help">0–30 mm gemeinsame Kartenfläche zwischen benachbarten Blättern (Standard: 15 mm); zusätzlich 10 mm weißer Rand für Schnitt- und Passmarken. Die Vorschau zeigt das gesamte Kartenraster; gelbe Streifen markieren die gewählte Überlappung.</p>
+    <p class="help-block">Zusammensetzen: von links nach rechts, dann von oben nach unten. An inneren Verbindungen den linken bzw. oberen weißen Rand an den Schnittmarken abschneiden. Kartenstreifen um den gewählten Wert überlappend auflegen; bei 0 mm die Kartenkanten bündig aneinanderlegen und die weißen Ränder als Klebelaschen unterlegen. Gleiche Passkreuze deckungsgleich ausrichten. Außenränder am Schluss abschneiden. PDF mit <strong>100 % / tatsächlicher Größe</strong> einseitig drucken.</p>
   </div>
   <div class="row">
     <div class="col-sm-4" id="unitSettings">

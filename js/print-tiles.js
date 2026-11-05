@@ -8,9 +8,10 @@
     'use strict';
     var FORMATS = {a0: [841, 1189], a1: [594, 841], a2: [420, 594],
         a3: [297, 420], a4: [210, 297]};
-    var OVERLAP = 15, MARGIN = 10;
+    var DEFAULT_OVERLAP = 15, MARGIN = 10;
 
-    function layout(format, orientation, columns, rows) {
+    function layout(format, orientation, columns, rows, overlap) {
+        if (overlap === undefined) overlap = DEFAULT_OVERLAP;
         if (!Object.prototype.hasOwnProperty.call(FORMATS, format) ||
                 ['portrait', 'landscape'].indexOf(orientation) < 0) {
             throw new Error('Bitte DIN A0 bis DIN A4 und eine Ausrichtung auswählen.');
@@ -19,15 +20,18 @@
                 columns < 1 || rows < 1 || columns > 10 || rows > 10) {
             throw new Error('Bitte für Spalten und Zeilen jeweils eine ganze Zahl von 1 bis 10 eingeben.');
         }
+        if (!Number.isFinite(overlap) || overlap < 0 || overlap > 30) {
+            throw new Error('Bitte eine Überlappung von 0 bis 30 mm eingeben.');
+        }
         var size = FORMATS[format], landscape = orientation === 'landscape';
         var width = size[landscape ? 1 : 0], height = size[landscape ? 0 : 1];
         var imageWidth = width - 2 * MARGIN, imageHeight = height - 2 * MARGIN;
-        var stepX = imageWidth - OVERLAP, stepY = imageHeight - OVERLAP;
+        var stepX = imageWidth - overlap, stepY = imageHeight - overlap;
         var result = {format: format, orientation: orientation, columns: columns, rows: rows,
             pageWidth: width, pageHeight: height, imageWidth: imageWidth, imageHeight: imageHeight,
             width: imageWidth + (columns - 1) * stepX,
             height: imageHeight + (rows - 1) * stepY,
-            margin: MARGIN, overlap: OVERLAP, pages: []};
+            margin: MARGIN, overlap: overlap, pages: []};
         for (var row = 0; row < rows; row++) {
             for (var column = 0; column < columns; column++) {
                 result.pages.push({row: row, column: column, x: column * stepX, y: row * stepY,
@@ -78,14 +82,14 @@
             pdf.line(x, y - 1.5, x, y + 1.5);
         }
         // Corresponding crosses refer to identical positions in each duplicated
-        // 15 mm strip. Keep them in removable margins, outside the finished map.
+        // strip (or the shared edge at 0 mm). Keep them in removable margins.
         if (page.column > 0) { cross(m + half, 7); cross(m + half, h - 7); }
         if (page.column < poster.columns - 1) { cross(right - half, 7); cross(right - half, h - 7); }
         if (page.row > 0) { cross(7, m + half); cross(w - 7, m + half); }
         if (page.row < poster.rows - 1) { cross(7, bottom - half); cross(w - 7, bottom - half); }
         pdf.setFontSize(7);
         var title = 'Blatt ' + page.number + '/' + poster.pages.length + ' | ' + page.label +
-            ' | ' + poster.format.toUpperCase() + ' | 15 mm Ueberlappung | 100 % drucken';
+            ' | ' + poster.format.toUpperCase() + ' | ' + poster.overlap + ' mm Ueberlappung | 100 % drucken';
         pdf.text(title, w / 2, 7.5, null, null, 'center');
         var neighbours = [];
         if (page.column > 0) neighbours.push('links: Z' + (page.row + 1) + '-S' + page.column);
@@ -94,7 +98,10 @@
         if (page.row < poster.rows - 1) neighbours.push('unten: Z' + (page.row + 2) + '-S' + (page.column + 1));
         pdf.setFontSize(6);
         pdf.text(neighbours.length ? neighbours.join(' | ') : 'Einzelblatt', w / 2, h - 8, null, null, 'center');
-        pdf.text('Innen links/oben am Bildrand schneiden. 15 mm ueberlappen; Passkreuze ausrichten. | ' + attribution,
+        var assembly = poster.overlap === 0 ?
+            'Kartenkanten buendig aneinanderlegen; weisse Raender als Klebelaschen unterlegen.' :
+            poster.overlap + ' mm ueberlappen; Passkreuze ausrichten.';
+        pdf.text('Innen links/oben am Bildrand schneiden. ' + assembly + ' | ' + attribution,
             w / 2, h - 5.3, null, null, 'center');
         // Repeat attribution in each sheet's footer; retain one copy on the
         // assembled map without obscuring any shared strip at an interior join.

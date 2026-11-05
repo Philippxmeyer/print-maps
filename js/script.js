@@ -149,7 +149,7 @@ function updateSizeMode() {
     form.heightInput.disabled = tiled;
     form.unitOptions[0].disabled = tiled;
     form.unitOptions[1].disabled = tiled;
-    ['paperFormat', 'paperOrientation', 'sheetColumns', 'sheetRows'].forEach(function(id) {
+    ['paperFormat', 'paperOrientation', 'sheetColumns', 'sheetRows', 'sheetOverlap'].forEach(function(id) {
         form[id].disabled = !tiled;
     });
     if (tiled) {
@@ -165,7 +165,7 @@ function updateSizeMode() {
     validateDimensions();
 }
 form.sizeMode.addEventListener('change', updateSizeMode);
-['paperFormat', 'paperOrientation', 'sheetColumns', 'sheetRows'].forEach(function(id) {
+['paperFormat', 'paperOrientation', 'sheetColumns', 'sheetRows', 'sheetOverlap'].forEach(function(id) {
     form[id].addEventListener('change', validateDimensions);
     form[id].addEventListener('input', validateDimensions);
 });
@@ -213,7 +213,8 @@ function validateSheets(dpi) {
     posterLayout = null;
     try {
         posterLayout = PrintTiles.layout(form.paperFormat.value, form.paperOrientation.value,
-            Number(form.sheetColumns.value), Number(form.sheetRows.value));
+            Number(form.sheetColumns.value), Number(form.sheetRows.value),
+            form.sheetOverlap.value.trim() === '' ? NaN : Number(form.sheetOverlap.value));
     } catch (error) {
         errors.sheets.state = true;
         errors.sheets.msg = error.message;
@@ -224,7 +225,8 @@ function validateSheets(dpi) {
     document.getElementById('sheet-summary').textContent = p.columns + ' × ' + p.rows +
         ' = ' + p.pages.length + ' PDF-Seiten, DIN ' + p.format.toUpperCase() + ' ' +
         (p.orientation === 'portrait' ? 'Hochformat' : 'Querformat') +
-        '. Kartenfläche nach dem Zusammenkleben: ' + p.width + ' × ' + p.height + ' mm (ohne Außenrand).';
+        '. Überlappung: ' + p.overlap + ' mm. Kartenfläche nach dem Zusammenkleben: ' +
+        p.width + ' × ' + p.height + ' mm (ohne Außenrand).';
     // Limit the raster of a single sheet, rather than the entire poster. Allow
     // for rounding the render viewport up to whole CSS pixels for exact cropping.
     var cssWidth = p.imageWidth * PrintScale.CSS_DPI / 25.4;
@@ -532,7 +534,7 @@ function setPdfProperties(pdf, settings, name) {
         subject: 'center: [' + settings.center.lng + ', ' + settings.center.lat +
             '], local scale at poster center 1:' + settings.scale +
             (settings.poster ? ', ' + settings.poster.columns + 'x' + settings.poster.rows +
-                ' sheets, overlap 15 mm' : ''),
+                ' sheets, overlap ' + settings.poster.overlap + ' mm' : ''),
         creator: 'Print Maps',
         author: '(c) ' + (settings.style.indexOf('mapbox') >= 0 ? 'Mapbox' : 'Stadia Maps') +
             ', (c) OpenStreetMap'

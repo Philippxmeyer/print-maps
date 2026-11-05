@@ -29,7 +29,7 @@ function application() {
     const ids = [...fs.readFileSync(require.resolve('../index.html'), 'utf8').matchAll(/id="([^"]+)"/g)].map(m => m[1]);
     ids.forEach(id => element(id));
     const defaults = {widthInput: '8', heightInput: '6', dpiInput: '300', sizeMode: 'size',
-        paperFormat: 'a4', paperOrientation: 'portrait', sheetColumns: '3', sheetRows: '2',
+        paperFormat: 'a4', paperOrientation: 'portrait', sheetColumns: '3', sheetRows: '2', sheetOverlap: '15',
         styleSelect: 'mapbox://styles/mapbox/bright-v9'};
     Object.entries(defaults).forEach(([id, value]) => { elements[id].value = value; });
     const form = elements.config;
@@ -165,6 +165,50 @@ test('all DIN formats export in both orientations and 1x1 adds no blank PDF page
             assert.deepEqual(Array.from(app.pdfs[0].options.format), orientation === 'portrait' ? size : [...size].reverse());
         }
     }
+});
+
+test('custom overlap updates preview extent, PDF labels and metadata while preserving print scale', async () => {
+    for (const [overlap, extent] of [['0', '570 × 554 mm'], ['0.5', '569 × 553.5 mm'], ['30', '510 × 524 mm']]) {
+        const app = application(), {context: c, elements: e} = app;
+        app.sheets();
+        e.sheetOverlap.value = overlap;
+        e.sheetOverlap.dispatch('input');
+        assert.equal(e['generate-btn'].disabled, false);
+        assert.ok(e['sheet-summary'].textContent.includes(extent));
+        assert.equal(c.posterLayout.overlap, Number(overlap));
+        assert.ok(c.previewGrid.width > 0);
+        await c.generateMap();
+        const pdf = app.pdfs[0];
+        assert.equal(pdf.pages.length, 6);
+        assert.ok(pdf.properties.subject.includes(`overlap ${overlap} mm`));
+        for (const page of pdf.pages) {
+            assert.ok(page.texts.some(t => t[0].includes(`${overlap} mm Ueberlappung`)));
+            assert.ok(page.texts.some(t => t[0].includes(overlap === '0' ? 'Kartenkanten buendig' : `${overlap} mm ueberlappen`)));
+        }
+        assert.equal(c.scaleController.target, 25000);
+        const expected = Tiles.pageCenter(Tiles.layout('a4', 'portrait', 3, 2, Number(overlap)),
+            c.posterLayout.pages[0], {lng: 6.95, lat: 50.85}, Scale.zoomFromScale(50.85, 25000), 0);
+        assert.deepEqual(app.rendered[0].center, expected);
+        e.sizeMode.value = 'size'; e.sizeMode.dispatch('change');
+        assert.equal(e.sheetOverlap.disabled, true);
+        e.sizeMode.value = 'sheets'; e.sizeMode.dispatch('change');
+        assert.equal(e.sheetOverlap.value, overlap);
+        assert.equal(e.sheetOverlap.disabled, false);
+    }
+});
+
+test('invalid overlap blocks export and a valid value recovers immediately', () => {
+    const app = application(), {context: c, elements: e} = app;
+    app.sheets();
+    for (const overlap of ['', ' ', '-0.1', '30.1', 'Infinity', 'NaN']) {
+        e.sheetOverlap.value = overlap; e.sheetOverlap.dispatch('input');
+        assert.equal(e['generate-btn'].disabled, true);
+        assert.match(e['error-message'].textContent, /0 bis 30 mm/);
+        assert.equal(c.posterLayout, null);
+    }
+    e.sheetOverlap.value = '0'; e.sheetOverlap.dispatch('input');
+    assert.equal(e['generate-btn'].disabled, false);
+    assert.equal(app.rendered.length, 0);
 });
 
 test('invalid counts and excessive A0 resolution block export; reducing DPI recovers', () => {
